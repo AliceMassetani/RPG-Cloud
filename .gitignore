@@ -1,0 +1,38 @@
+# ==============================================================================
+# RPG-Cloud .gitignore
+# ==============================================================================
+
+# --- Environment ---
+.env
+
+# --- IDE ---
+.idea/
+.vscode/
+*.iml
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Backend (Java / Gradle) ---
+backend/build/
+backend/.gradle/
+backend/bin/
+backend/out/
+*.class
+*.jar
+*.war
+
+# --- Frontend (Angular / Node) ---
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+
+# --- Database ---
+db_data/
+
+# --- Docker ---
+docker-compose.override.yml
+
+# --- Old project artifacts ---
+savegame.dat

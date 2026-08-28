@@ -21,3 +21,7 @@ logging:
   level:
     root: INFO
     it.unicam.cs.rpgcloud: DEBUG
+
+app:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200,http://localhost:80}

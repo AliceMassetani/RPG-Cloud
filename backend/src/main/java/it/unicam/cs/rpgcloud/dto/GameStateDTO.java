@@ -1,7 +1,6 @@
 package it.unicam.cs.rpgcloud.dto;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * DTO representing the full game state sent to/from the frontend.

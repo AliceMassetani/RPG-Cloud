@@ -1,13 +1,9 @@
 package it.unicam.cs.rpgcloud.service;
 
 import it.unicam.cs.rpgcloud.model.GameCharacter;
-import it.unicam.cs.rpgcloud.model.Hero;
-import it.unicam.cs.rpgcloud.model.Monster;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
 import java.util.Random;
-import java.util.stream.Collectors;
 
 /**
  * Manages combat resolution between heroes and monsters.

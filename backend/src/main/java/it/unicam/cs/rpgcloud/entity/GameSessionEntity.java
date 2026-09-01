@@ -21,6 +21,9 @@ public class GameSessionEntity {
     @Column(name = "player_name", nullable = false, length = 100)
     private String playerName;
 
+    @Column(name = "username", nullable = false, length = 50)
+    private String username;
+
     @Column(name = "game_state", nullable = false, columnDefinition = "JSON")
     private String gameState;
 
@@ -34,9 +37,10 @@ public class GameSessionEntity {
         // JPA requires a no-arg constructor
     }
 
-    public GameSessionEntity(String id, String playerName, String gameState) {
+    public GameSessionEntity(String id, String playerName, String username, String gameState) {
         this.id = id;
         this.playerName = playerName;
+        this.username = username;
         this.gameState = gameState;
         this.createdAt = LocalDateTime.now();
         this.updatedAt = LocalDateTime.now();
@@ -58,6 +62,14 @@ public class GameSessionEntity {
 
     public void setPlayerName(String playerName) {
         this.playerName = playerName;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
     }
 
     public String getGameState() {

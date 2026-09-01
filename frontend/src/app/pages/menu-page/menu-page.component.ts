@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { GameService } from '../../services/game.service';
+import { AuthService } from '../../services/auth.service';
 import { SaveSummaryDTO } from '../../models/game.models';
 
 /**
@@ -15,8 +16,16 @@ import { SaveSummaryDTO } from '../../models/game.models';
   template: `
     <div class="menu-container">
       <div class="menu-card">
-        <h1 class="title">⚔️ RPG Cloud</h1>
-        <p class="subtitle">A Rogue-like Adventure</p>
+        <div class="header-row">
+          <div>
+            <h1 class="title">⚔️ RPG Cloud</h1>
+            <p class="subtitle">A Rogue-like Adventure</p>
+          </div>
+          <div class="user-info">
+            <span class="username">👤 {{ authService.getUsername() }}</span>
+            <button class="btn btn-logout" (click)="logout()">🚪 Logout</button>
+          </div>
+        </div>
 
         <!-- New Game -->
         <div class="section">
@@ -234,6 +243,40 @@ import { SaveSummaryDTO } from '../../models/game.models';
       text-align: center;
       margin: 8px 0;
     }
+
+    .header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 8px;
+    }
+
+    .user-info {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+    }
+
+    .username {
+      color: #ccc;
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .btn-logout {
+      padding: 6px 14px;
+      font-size: 12px;
+      width: auto;
+      border-radius: 8px;
+      background: rgba(244, 67, 54, 0.15);
+      color: #F44336;
+      border: 1px solid rgba(244, 67, 54, 0.3);
+    }
+
+    .btn-logout:hover {
+      background: rgba(244, 67, 54, 0.25);
+    }
   `]
 })
 export class MenuPageComponent {
@@ -242,6 +285,7 @@ export class MenuPageComponent {
 
   constructor(
     private gameService: GameService,
+    public authService: AuthService,
     private router: Router
   ) {
     this.loadSavesList();
@@ -281,5 +325,9 @@ export class MenuPageComponent {
       next: () => this.loadSavesList(),
       error: (err) => console.error('Failed to delete save:', err)
     });
+  }
+
+  logout(): void {
+    this.authService.logout();
   }
 }

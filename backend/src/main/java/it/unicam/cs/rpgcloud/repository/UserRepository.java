@@ -1,0 +1,18 @@
+package it.unicam.cs.rpgcloud.repository;
+
+import it.unicam.cs.rpgcloud.entity.UserEntity;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
+
+/**
+ * Spring Data JPA repository for user persistence.
+ */
+@Repository
+public interface UserRepository extends JpaRepository<UserEntity, Long> {
+
+    Optional<UserEntity> findByUsername(String username);
+
+    boolean existsByUsername(String username);
+}

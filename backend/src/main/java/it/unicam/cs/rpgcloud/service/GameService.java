@@ -22,6 +22,8 @@ import java.util.*;
  * Active sessions are stored in Redis with a 2-hour TTL (12-Factor: stateless
  * processes).
  * Persistence is triggered only on explicit save by the user.
+ *
+ * All operations are scoped to the authenticated user's username.
  */
 @Service
 public class GameService {
@@ -53,7 +55,7 @@ public class GameService {
     /**
      * Creates a new game session with a fresh map, hero, and monsters.
      */
-    public GameStateDTO createNewGame(String playerName) {
+    public GameStateDTO createNewGame(String playerName, String username) {
         String sessionId = UUID.randomUUID().toString();
 
         GameMap map = new GameMap(MAP_SIZE, MAP_SIZE);
@@ -74,10 +76,10 @@ public class GameService {
         // when they step on the tile — future enhancement)
 
         GameState state = new GameState(map, hero);
-        ActiveSession session = new ActiveSession(sessionId, playerName, state);
+        ActiveSession session = new ActiveSession(sessionId, playerName, username, state);
 
         saveSessionToRedis(session);
-        log.info("New game created: sessionId={}, player={}", sessionId, playerName);
+        log.info("New game created: sessionId={}, player={}, user={}", sessionId, playerName, username);
 
         return toDTO(session);
     }
@@ -85,8 +87,8 @@ public class GameService {
     /**
      * Gets the current state of an active session.
      */
-    public GameStateDTO getGameState(String sessionId) {
-        ActiveSession session = getActiveSession(sessionId);
+    public GameStateDTO getGameState(String sessionId, String username) {
+        ActiveSession session = getActiveSession(sessionId, username);
         return toDTO(session);
     }
 
@@ -98,8 +100,8 @@ public class GameService {
      * Moves the hero in the given direction. If a monster occupies the target,
      * combat is resolved automatically.
      */
-    public GameStateDTO moveHero(String sessionId, MoveRequest.Direction direction) {
-        ActiveSession session = getActiveSession(sessionId);
+    public GameStateDTO moveHero(String sessionId, MoveRequest.Direction direction, String username) {
+        ActiveSession session = getActiveSession(sessionId, username);
         GameState state = session.state;
         Hero hero = state.hero();
         GameMap map = state.map();
@@ -174,8 +176,8 @@ public class GameService {
     /**
      * Uses an item from the hero's inventory on the hero.
      */
-    public GameStateDTO useItem(String sessionId, String itemName) {
-        ActiveSession session = getActiveSession(sessionId);
+    public GameStateDTO useItem(String sessionId, String itemName, String username) {
+        ActiveSession session = getActiveSession(sessionId, username);
         Hero hero = session.state.hero();
 
         Optional<Item> item = hero.getInventory().keySet().stream()
@@ -202,24 +204,24 @@ public class GameService {
     /**
      * Saves the current in-memory session to the database.
      */
-    public void saveGame(String sessionId) {
-        ActiveSession session = getActiveSession(sessionId);
+    public void saveGame(String sessionId, String username) {
+        ActiveSession session = getActiveSession(sessionId, username);
 
         try {
             String stateJson = objectMapper.writeValueAsString(toDTO(session));
 
-            Optional<GameSessionEntity> existing = sessionRepository.findById(sessionId);
+            Optional<GameSessionEntity> existing = sessionRepository.findByIdAndUsername(sessionId, username);
             if (existing.isPresent()) {
                 existing.get().setGameState(stateJson);
                 sessionRepository.save(existing.get());
             } else {
-                GameSessionEntity entity = new GameSessionEntity(sessionId, session.playerName, stateJson);
+                GameSessionEntity entity = new GameSessionEntity(sessionId, session.playerName, username, stateJson);
                 sessionRepository.save(entity);
             }
 
             session.addLog("Game saved successfully.");
             saveSessionToRedis(session);
-            log.info("Game saved: sessionId={}", sessionId);
+            log.info("Game saved: sessionId={}, user={}", sessionId, username);
         } catch (JsonProcessingException e) {
             throw new RuntimeException("Failed to serialize game state", e);
         }
@@ -228,8 +230,8 @@ public class GameService {
     /**
      * Loads a saved game from the database into an active Redis session.
      */
-    public GameStateDTO loadGame(String sessionId) {
-        GameSessionEntity entity = sessionRepository.findById(sessionId)
+    public GameStateDTO loadGame(String sessionId, String username) {
+        GameSessionEntity entity = sessionRepository.findByIdAndUsername(sessionId, username)
                 .orElseThrow(() -> new NoSuchElementException("Save not found: " + sessionId));
 
         try {
@@ -268,7 +270,7 @@ public class GameService {
             }
 
             GameState state = new GameState(map, hero);
-            ActiveSession session = new ActiveSession(sessionId, entity.getPlayerName(), state);
+            ActiveSession session = new ActiveSession(sessionId, entity.getPlayerName(), username, state);
             session.addLog("Game loaded successfully.");
 
             // Restore combat log
@@ -277,7 +279,7 @@ public class GameService {
             }
 
             saveSessionToRedis(session);
-            log.info("Game loaded: sessionId={}", sessionId);
+            log.info("Game loaded: sessionId={}, user={}", sessionId, username);
 
             return toDTO(session);
         } catch (JsonProcessingException e) {
@@ -286,21 +288,23 @@ public class GameService {
     }
 
     /**
-     * Lists all saved game sessions.
+     * Lists all saved game sessions for the authenticated user.
      */
-    public List<SaveSummaryDTO> listSaves() {
-        return sessionRepository.findAllByOrderByUpdatedAtDesc().stream()
+    public List<SaveSummaryDTO> listSaves(String username) {
+        return sessionRepository.findAllByUsernameOrderByUpdatedAtDesc(username).stream()
                 .map(e -> new SaveSummaryDTO(e.getId(), e.getPlayerName(), e.getCreatedAt(), e.getUpdatedAt()))
                 .toList();
     }
 
     /**
-     * Deletes a saved game session.
+     * Deletes a saved game session (only if owned by the user).
      */
-    public void deleteGame(String sessionId) {
-        sessionRepository.deleteById(sessionId);
-        deleteSessionFromRedis(sessionId);
-        log.info("Game deleted: sessionId={}", sessionId);
+    public void deleteGame(String sessionId, String username) {
+        GameSessionEntity entity = sessionRepository.findByIdAndUsername(sessionId, username)
+                .orElseThrow(() -> new NoSuchElementException("Save not found: " + sessionId));
+        sessionRepository.delete(entity);
+        deleteSessionFromRedis(sessionId, username);
+        log.info("Game deleted: sessionId={}, user={}", sessionId, username);
     }
 
     // =========================================================================
@@ -313,7 +317,7 @@ public class GameService {
     private void saveSessionToRedis(ActiveSession session) {
         try {
             String json = objectMapper.writeValueAsString(toDTO(session));
-            redisTemplate.opsForValue().set(redisKey(session.sessionId), json, SESSION_TTL);
+            redisTemplate.opsForValue().set(redisKey(session.sessionId, session.username), json, SESSION_TTL);
         } catch (JsonProcessingException e) {
             throw new RuntimeException("Failed to serialize session to Redis", e);
         }
@@ -322,8 +326,8 @@ public class GameService {
     /**
      * Retrieves and deserializes an active session from Redis.
      */
-    private ActiveSession getActiveSession(String sessionId) {
-        String json = redisTemplate.opsForValue().get(redisKey(sessionId));
+    private ActiveSession getActiveSession(String sessionId, String username) {
+        String json = redisTemplate.opsForValue().get(redisKey(sessionId, username));
         if (json == null) {
             throw new NoSuchElementException("Session not found: " + sessionId);
         }
@@ -364,7 +368,7 @@ public class GameService {
             }
 
             GameState state = new GameState(map, hero);
-            ActiveSession session = new ActiveSession(sessionId, dto.hero().name(), state);
+            ActiveSession session = new ActiveSession(sessionId, dto.hero().name(), username, state);
 
             // Restore combat log
             if (dto.combatLog() != null) {
@@ -380,12 +384,12 @@ public class GameService {
     /**
      * Deletes an active session from Redis.
      */
-    private void deleteSessionFromRedis(String sessionId) {
-        redisTemplate.delete(redisKey(sessionId));
+    private void deleteSessionFromRedis(String sessionId, String username) {
+        redisTemplate.delete(redisKey(sessionId, username));
     }
 
-    private String redisKey(String sessionId) {
-        return REDIS_KEY_PREFIX + sessionId;
+    private String redisKey(String sessionId, String username) {
+        return REDIS_KEY_PREFIX + username + ":" + sessionId;
     }
 
     // =========================================================================
@@ -446,12 +450,14 @@ public class GameService {
     private static class ActiveSession {
         final String sessionId;
         final String playerName;
+        final String username;
         GameState state;
         final List<String> combatLog = new ArrayList<>();
 
-        ActiveSession(String sessionId, String playerName, GameState state) {
+        ActiveSession(String sessionId, String playerName, String username, GameState state) {
             this.sessionId = sessionId;
             this.playerName = playerName;
+            this.username = username;
             this.state = state;
         }
 

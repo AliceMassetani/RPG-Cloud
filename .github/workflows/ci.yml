@@ -60,23 +60,36 @@ jobs:
 
       - name: Wait for services
         run: |
-          echo "Waiting for backend health..."
-          for i in $(seq 1 30); do
-            curl -sf http://localhost:4200 && break || sleep 2
+          echo "Waiting for backend API to be ready..."
+          for i in $(seq 1 60); do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:4200/api/auth/login)
+            echo "  Attempt $i: HTTP $CODE"
+            if [ "$CODE" -ge 200 ] && [ "$CODE" -lt 504 ] && [ "$CODE" -ne 502 ]; then
+              echo "Backend is ready!"
+              break
+            fi
+            sleep 3
           done
+
+      - name: Debug – container status
+        if: always()
+        run: |
+          docker compose ps
+          echo "--- Backend logs (last 50 lines) ---"
+          docker compose logs --tail=50 backend
 
       - name: Smoke test – Auth & API
         run: |
           echo "=== 1. Verify unauthenticated request is rejected ==="
           HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:4200/api/game/saves)
-          if [ "$HTTP_CODE" -lt 400 ]; then
-            echo "FAIL: Expected 401/403 but got $HTTP_CODE"
+          if [ "$HTTP_CODE" -ne 401 ] && [ "$HTTP_CODE" -ne 403 ]; then
+            echo "FAIL: Expected 401 or 403 but got $HTTP_CODE"
             exit 1
           fi
           echo "PASS: Unauthenticated request correctly rejected ($HTTP_CODE)"
 
           echo "=== 2. Register a test user ==="
-          REGISTER_RESPONSE=$(curl -sf -X POST http://localhost:4200/api/auth/register \
+          REGISTER_RESPONSE=$(curl -s -X POST http://localhost:4200/api/auth/register \
             -H "Content-Type: application/json" \
             -d '{"username":"ci_smoke_user","password":"CiSmokePass123!"}')
           echo "Register response: $REGISTER_RESPONSE"

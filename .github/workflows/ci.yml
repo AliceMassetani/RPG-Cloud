@@ -77,13 +77,6 @@ jobs:
             exit 1
           fi
 
-      - name: Debug – container status
-        if: always()
-        run: |
-          docker compose ps
-          echo "--- Backend logs (last 50 lines) ---"
-          docker compose logs --tail=50 backend
-
       - name: Smoke test – Auth & API
         run: |
           echo "=== 1. Verify unauthenticated request is rejected ==="

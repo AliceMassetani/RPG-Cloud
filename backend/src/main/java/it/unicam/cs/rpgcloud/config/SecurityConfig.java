@@ -4,7 +4,6 @@ import it.unicam.cs.rpgcloud.security.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -18,6 +17,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
  * Spring Security configuration for stateless JWT authentication.
  * - CSRF is disabled (stateless API, no cookies/sessions).
  * - Sessions are STATELESS.
+ * - CORS is not needed: Nginx reverse proxy ensures same-origin requests.
  * - /api/auth/** endpoints are public.
  * - /api/game/** endpoints require authentication.
  */
@@ -34,7 +34,6 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                .cors(Customizer.withDefaults())
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))

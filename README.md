@@ -118,7 +118,6 @@ Tutte le configurazioni sono gestite tramite **variabili d'ambiente**, in confor
 | `DB_NAME` | Nome del database | `rpg_cloud_db` |
 | `DB_USER` | Utente database | `rpg_user` |
 | `DB_PASSWORD` | Password utente DB | — |
-| `CORS_ALLOWED_ORIGINS` | Origini CORS ammesse (comma-separated) | `http://localhost:4200,http://localhost:80` |
 
 - Il file **`.env.example`** è tracciato su Git come template.
 - Il file **`.env`** (con i valori reali) è in `.gitignore` e `.dockerignore`.

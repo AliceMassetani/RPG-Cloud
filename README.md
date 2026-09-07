@@ -11,7 +11,7 @@ Evoluzione del progetto [ProgettoRPG](https://github.com/AliceMassetani/Progetto
 | Livello | Tecnologia | Porta Interna | Esposta all'host |
 |---|---|---|---|
 | **Frontend** | Angular 19 + Nginx | `:80` | `:4200` |
-| **Backend** | Spring Boot 3.3 (Java 21) — REST API | `:8080` | `:8080` |
+| **Backend** | Spring Boot 3.3 (Java 21) — REST API | `:8080` | ❌ **Non esposta** |
 | **Session Cache** | Redis (alpine) | `:6379` | ❌ **Non esposta** |
 | **Database** | MariaDB 11.8 | `:3306` | ❌ **Non esposta** |
 

@@ -12,9 +12,10 @@ Evoluzione del progetto [ProgettoRPG](https://github.com/AliceMassetani/Progetto
 |---|---|---|---|
 | **Frontend** | Angular 19 + Nginx | `:80` | `:4200` |
 | **Backend** | Spring Boot 3.3 (Java 21) — REST API | `:8080` | `:8080` |
+| **Session Cache** | Redis (alpine) | `:6379` | ❌ **Non esposta** |
 | **Database** | MariaDB 11.8 | `:3306` | ❌ **Non esposta** |
 
-I tre container comunicano tramite una **rete Docker interna isolata** (`rpg-network`). Il database è raggiungibile **solo** dal backend. Il frontend Angular viene servito da Nginx, che funge anche da **reverse proxy** per le chiamate `/api/*` verso il backend.
+I container comunicano tramite una **rete Docker interna isolata** (`rpg-network`). Il database e Redis sono raggiungibili **solo** dal backend. Il frontend Angular viene servito da Nginx, che funge anche da **reverse proxy** per le chiamate `/api/*` verso il backend.
 
 ```mermaid
 graph LR
@@ -22,17 +23,27 @@ graph LR
     subgraph Docker["Docker Compose (rpg-network)"]
         FE["Frontend<br/>Angular + Nginx<br/>:4200 → :80"]
         BE["Backend<br/>Spring Boot<br/>:8080"]
+        REDIS["Redis<br/>:6379<br/>(non esposta)"]
         DB["MariaDB<br/>:3306<br/>(non esposta)"]
     end
     Browser -->|"HTTP :4200"| FE
     FE -->|"/api/* proxy"| BE
+    BE -->|"Redis"| REDIS
     BE -->|"JDBC"| DB
     DB ---|"db_data volume"| V["📦 Volume persistente"]
 ```
 
-### Nota sulla Statelessness
+### Fattore VI: Processi Stateless (Cache con Redis)
 
-Il backend mantiene le sessioni di gioco attive in una `ConcurrentHashMap` in memoria. Questa è una **scelta progettuale intenzionale**: le sessioni sono dati transitori (lo stato di una partita in corso), non configurazioni o stato dell'applicazione. La persistenza avviene **esclusivamente** su database MariaDB tramite l'azione esplicita di salvataggio dell'utente. Non viene effettuato alcun I/O su file locali del container.
+Il backend Spring Boot è completamente **stateless**: nessuna sessione di gioco viene mantenuta in memoria nel processo Java. Lo stato attivo della partita in corso viene **esternalizzato** in un container **Redis** dedicato, configurato con un **TTL di 2 ore** per ogni chiave di sessione.
+
+Questa scelta garantisce:
+
+- **Scalabilità orizzontale** — più istanze del backend possono condividere lo stesso store di sessione Redis senza affinità di sessione.
+- **Resilienza ai crash** — il riavvio o la sostituzione di un container backend non comporta la perdita delle partite in corso, poiché lo stato risiede esternamente in Redis.
+- **Conformità al Fattore VI** dei 12-Factor App — i processi applicativi sono *share-nothing* e non dipendono da stato locale in memoria.
+
+La **persistenza permanente** dei salvataggi avviene esclusivamente su database MariaDB tramite l'azione esplicita di salvataggio dell'utente.
 
 ---
 
@@ -62,6 +73,10 @@ docker compose ps
 ```
 
 Apri il browser su **http://localhost:4200**.
+
+### Accesso all'applicazione
+
+L'applicazione supporta la **registrazione dinamica** e **non richiede credenziali pre-configurate** né utenti di test hardcoded nel database. L'utente può registrarsi in totale autonomia inserendo credenziali a propria scelta, cliccando sul pulsante **"Register"** direttamente nella schermata iniziale di login del frontend.
 
 ### Arresto
 
@@ -148,7 +163,20 @@ La pipeline GitHub Actions (`.github/workflows/ci.yml`) esegue automaticamente s
 
 1. **Build & Test Backend** — `./gradlew build` (JDK 21)
 2. **Build Frontend** — `npm ci` + `ng build --configuration production` (Node 22)
-3. **Docker Compose Integration** — Build immagini, avvio servizi, smoke test API
+3. **Docker Compose Integration** — Build immagini, avvio di tutti i servizi e **Smoke Test API** a runtime
+
+### Smoke Test API (Docker Compose Integration)
+
+Lo step di integrazione esegue un test automatico end-to-end in **4 fasi** tramite `curl` e `jq`, verificando l'intero flusso di autenticazione e accesso alle API protette:
+
+| Fase | Nome | Descrizione |
+|---|---|---|
+| **1** | **Verifica Barriera di Sicurezza** | Chiamata anonima (senza token) all'endpoint protetto `/api/game/saves`. Il test verifica che la risposta sia `401 Unauthorized` o `403 Forbidden`, confermando che la sicurezza Spring Security blocca correttamente gli accessi non autenticati. |
+| **2** | **Scrittura DB** | Registrazione di un nuovo utente fittizio tramite l'endpoint di registrazione. Verifica che l'hash BCrypt della password venga generato correttamente e che l'utente sia persistito su MariaDB. |
+| **3** | **Generazione JWT** | Login dell'utente appena registrato. Il token JWT viene estratto programmaticamente dalla risposta JSON tramite l'utility `jq`. |
+| **4** | **Accesso Autenticato** | Nuova chiamata all'endpoint protetto `/api/game/saves`, questa volta includendo il token JWT nell'header `Authorization: Bearer <token>`. Il test verifica che la risposta sia `200 OK`, confermando il corretto funzionamento dell'intera catena di autenticazione. |
+
+**Teardown**: al termine dello step viene eseguito `docker compose down -v` per distruggere tutti i container e i volumi associati, azzerando completamente la persistenza di dati temporanei sul runner CI.
 
 ---
 
@@ -158,7 +186,7 @@ La pipeline GitHub Actions (`.github/workflows/ci.yml`) esegue automaticamente s
 RPG-Cloud/
 ├── .env.example                  # Template variabili d'ambiente
 ├── .github/workflows/ci.yml     # Pipeline CI/CD
-├── docker-compose.yml            # Orchestrazione 3 servizi
+├── docker-compose.yml            # Orchestrazione servizi
 ├── backend/                      # Spring Boot (Java 21, Gradle)
 │   ├── Dockerfile                # Multi-stage: JDK → JRE
 │   ├── .dockerignore

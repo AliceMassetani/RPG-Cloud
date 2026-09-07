@@ -2,9 +2,9 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
-    branches: [main]
+    branches: [master]
 
 jobs:
   build-backend:
@@ -63,9 +63,40 @@ jobs:
             curl -sf http://localhost:4200 && break || sleep 2
           done
 
-      - name: Smoke test API
+      - name: Smoke test – Auth & API
         run: |
-          curl -sf http://localhost:4200/api/game/saves
+          echo "=== 1. Verify unauthenticated request is rejected ==="
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:4200/api/game/saves)
+          if [ "$HTTP_CODE" -lt 400 ]; then
+            echo "FAIL: Expected 401/403 but got $HTTP_CODE"
+            exit 1
+          fi
+          echo "PASS: Unauthenticated request correctly rejected ($HTTP_CODE)"
+
+          echo "=== 2. Register a test user ==="
+          REGISTER_RESPONSE=$(curl -sf -X POST http://localhost:4200/api/auth/register \
+            -H "Content-Type: application/json" \
+            -d '{"username":"ci_smoke_user","password":"CiSmokePass123!"}')
+          echo "Register response: $REGISTER_RESPONSE"
+
+          TOKEN=$(echo "$REGISTER_RESPONSE" | jq -r '.token')
+          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+            echo "FAIL: Could not extract JWT token from register response"
+            exit 1
+          fi
+          echo "PASS: Registered successfully, token obtained"
+
+          echo "=== 3. Access protected endpoint with JWT ==="
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $TOKEN" \
+            http://localhost:4200/api/game/saves)
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "FAIL: Authenticated request returned $HTTP_CODE"
+            exit 1
+          fi
+          echo "PASS: Authenticated request succeeded (200)"
+
+          echo "=== All smoke tests passed ==="
 
       - name: Cleanup
         if: always()
